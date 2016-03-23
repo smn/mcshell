@@ -1,9 +1,11 @@
 from twisted.cred import portal
-from twisted.conch import manhole_ssh, manhole_tap
+from twisted.conch import manhole_ssh
 from twisted.conch.checkers import SSHPublicKeyDatabase
+from twisted.conch.insults import insults
 from twisted.python.filepath import FilePath
 from twisted.internet.endpoints import serverFromString
 from twisted.internet import reactor
+from twisted.python import log
 
 
 class SSHPubKeyDatabase(SSHPublicKeyDatabase):
@@ -22,6 +24,33 @@ class SSHPubKeyDatabase(SSHPublicKeyDatabase):
         return SSHPublicKeyDatabase.getAuthorizedKeysFiles(self, credentials)
 
 
+class ShellProtocol(insults.TerminalProtocol):
+
+    # defaults
+    width = 80
+    height = 24
+
+    def terminalSize(self, width, height):
+        self.width = width
+        self.height = height
+
+
+class ShellSession(manhole_ssh.TerminalSession):
+
+    def execCommand(self, proto, cmd):
+        log.msg('Asked to run: %s for %s.' % (cmd, proto))
+        proto.write('You asked me to run: %s\n' % (cmd,))
+
+
+class ShellUser(manhole_ssh.TerminalUser):
+    pass
+
+
+class ShellRealm(manhole_ssh.TerminalRealm):
+    userFactory = ShellUser
+    sessionFactory = ShellSession
+
+
 class Shell(object):
 
     clock = reactor
@@ -30,12 +59,13 @@ class Shell(object):
         self.twisted_endpoint = twisted_endpoint
         self.authorized_keys = authorized_keys
 
+    def chainedProtocolFactory(self):
+        return insults.ServerProtocol(ShellProtocol)
+
     def start(self):
         checker = SSHPubKeyDatabase(self.authorized_keys)
-        ssh_realm = manhole_ssh.TerminalRealm()
-        ssh_realm.chainedProtocolFactory = manhole_tap.chainedProtocolFactory({
-            'foo': 'foo',
-        })
+        ssh_realm = ShellRealm()
+        ssh_realm.chainedProtocolFactory = self.chainedProtocolFactory
         ssh_portal = portal.Portal(ssh_realm, [checker])
         factory = manhole_ssh.ConchFactory(ssh_portal)
         endpoint = serverFromString(self.clock, self.twisted_endpoint)
