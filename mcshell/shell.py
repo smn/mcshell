@@ -41,6 +41,9 @@ class ShellSession(manhole_ssh.TerminalSession):
         log.msg('Asked to run: %s for %s.' % (cmd, proto))
         proto.write('You asked me to run: %s\n' % (cmd,))
 
+    def windowChanged(self, dimensions):
+        pass
+
 
 class ShellUser(manhole_ssh.TerminalUser):
     pass
